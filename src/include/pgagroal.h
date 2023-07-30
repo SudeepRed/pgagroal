@@ -38,6 +38,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
+#include <uthash.h>
 #if HAVE_OPENBSD
 #include <sys/limits.h>
 #endif
@@ -247,6 +248,12 @@ extern void* prometheus_shmem;
  */
 extern void* prometheus_cache_shmem;
 
+/**
+ * Shared memory used to contain the Query
+ * response cache.
+ */
+extern void* query_cache_shmem;
+
 /** @struct
  * Defines a server
  */
@@ -399,6 +406,33 @@ struct prometheus
    struct prometheus_connection prometheus_connections[];  /**< The number of prometheus connections (FMA) */
 
 } __attribute__ ((aligned (64)));
+
+
+/**
+ * A structure to handle the query response
+ * so that it is possible to serve the very same
+ * response over and over depending on the cache
+ * settings.
+ *
+
+ *
+ * The cache is protected by the `lock` field.
+ *
+ * The `size` field stores the size of the hashtable
+ */
+struct query_cache
+{
+   atomic_schar lock;    /**< lock to protect the cache */
+   size_t size;          /**< size of the cache */   
+   struct hashTable *table;         
+} __attribute__ ((aligned (64)));
+struct hashTable {
+    char key;
+    time_t valid_until;
+    char data;
+    UT_hash_handle hh;
+}__attribute__ ((aligned (64)));
+
 
 /** @struct
  * Defines the configuration and state of pgagroal

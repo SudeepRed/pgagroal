@@ -28,88 +28,25 @@
 
 /* pgagroal */
 #include <pgagroal.h>
+#include <logging.h>
+#include <memory.h>
+#include <message.h>
+#include <network.h>
+#include <query_cache.h>
+#include <utils.h>
 #include <shmem.h>
 
 /* system */
-#include <errno.h>
+#include <ev.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-
-void* shmem = NULL;
-void* pipeline_shmem = NULL;
-void* prometheus_shmem = NULL;
-void* prometheus_cache_shmem = NULL;
-void* query_cache_shmem = NULL;
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 int
-pgagroal_create_shared_memory(size_t size, unsigned char hp, void** shmem)
+pgagroal_init_query_cache(size_t* p_size, void** p_shmem)
 {
-   void* s = NULL;
-   int protection = PROT_READ | PROT_WRITE;
-   int visibility = MAP_ANONYMOUS | MAP_SHARED;
 
-   *shmem = NULL;
 
-#ifdef HAVE_LINUX
-   if (hp == HUGEPAGE_TRY || hp == HUGEPAGE_ON)
-   {
-      visibility = visibility | MAP_HUGETLB;
-   }
-
-#endif
-
-   s = mmap(NULL, size, protection, visibility, -1, 0);
-   if (s == (void*)-1)
-   {
-      errno = 0;
-      s = NULL;
-
-      if (hp == HUGEPAGE_OFF || hp == HUGEPAGE_ON)
-      {
-         return 1;
-      }
-   }
-
-   if (s == NULL)
-   {
-      visibility = MAP_ANONYMOUS | MAP_SHARED;
-      s = mmap(NULL, size, protection, visibility, 0, 0);
-
-      if (s == (void*)-1)
-      {
-         errno = 0;
-         return 1;
-      }
-   }
-
-   memset(s, 0, size);
-
-   *shmem = s;
-
-   return 0;
-}
-
-int
-pgagroal_resize_shared_memory(size_t size, void* shmem, size_t* new_size, void** new_shmem)
-{
-   struct configuration* config;
-
-   config = (struct configuration*)shmem;
-
-   *new_size = size + (config->max_connections * sizeof(struct connection));
-   if (pgagroal_create_shared_memory(*new_size, config->hugepage, new_shmem))
-   {
-      return 1;
-   }
-
-   memset(*new_shmem, 0, *new_size);
-   memcpy(*new_shmem, shmem, size);
-
-   return 0;
-}
-
-int
-pgagroal_destroy_shared_memory(void* shmem, size_t size)
-{
-   return munmap(shmem, size);
+   return 1;
 }
