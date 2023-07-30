@@ -41,6 +41,7 @@
 #include <shmem.h>
 #include <utils.h>
 #include <worker.h>
+#include <query_cache.h>
 
 /* system */
 #include <errno.h>
@@ -319,6 +320,7 @@ main(int argc, char** argv)
    size_t pipeline_shmem_size = 0;
    size_t prometheus_shmem_size = 0;
    size_t prometheus_cache_shmem_size = 0;
+   size_t query_cache_shmem_size = 0;
    size_t tmp_size;
    struct configuration* config = NULL;
    int ret;
@@ -828,7 +830,13 @@ read_superuser_path:
 #endif
       errx(1, "Error in creating and initializing prometheus cache shared memory");
    }
-
+   if (pgagroal_query_cache_init(&query_cache_shmem_size, &query_cache_shmem))
+   {
+#ifdef HAVE_LINUX
+      sd_notifyf(0, "STATUS=Error in creating and initializing query cache shared memory");
+#endif
+      errx(1, "Error in creating and initializing query cache shared memory");
+   }
    if (getrlimit(RLIMIT_NOFILE, &flimit) == -1)
    {
 #ifdef HAVE_LINUX
@@ -1191,6 +1199,7 @@ read_superuser_path:
    pgagroal_stop_logging();
    pgagroal_destroy_shared_memory(prometheus_shmem, prometheus_shmem_size);
    pgagroal_destroy_shared_memory(prometheus_cache_shmem, prometheus_cache_shmem_size);
+   pgagroal_destroy_shared_memory(query_cache_shmem, query_cache_shmem_size);
    pgagroal_destroy_shared_memory(shmem, shmem_size);
 
    return 0;
