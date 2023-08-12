@@ -427,9 +427,9 @@ struct query_cache
 } __attribute__ ((aligned (64)));
 struct hashTable
 {
-   char key;
+   void* key;
    time_t valid_until;
-   char data;
+   void* data;
    UT_hash_handle hh;
 } __attribute__ ((aligned (64)));
 

@@ -302,6 +302,7 @@ main(int argc, char** argv)
    char* frontend_users_path = NULL;
    char* admins_path = NULL;
    char* superuser_path = NULL;
+   bool test_query_cache = false;
    bool daemon = false;
    pid_t pid, sid;
 #ifdef HAVE_LINUX
@@ -347,7 +348,7 @@ main(int argc, char** argv)
       };
       int option_index = 0;
 
-      c = getopt_long (argc, argv, "dV?a:c:l:u:F:A:S:",
+      c = getopt_long (argc, argv, "dVt?a:c:l:u:F:A:S:",
                        long_options, &option_index);
 
       if (c == -1)
@@ -387,6 +388,9 @@ main(int argc, char** argv)
          case '?':
             usage();
             exit(1);
+            break;
+         case 't':
+            test_query_cache = true;
             break;
          default:
             break;
@@ -836,6 +840,11 @@ read_superuser_path:
       sd_notifyf(0, "STATUS=Error in creating and initializing query cache shared memory");
 #endif
       errx(1, "Error in creating and initializing query cache shared memory");
+
+   }
+   if (test_query_cache)
+   {
+      pgagroal_query_cache_test();
    }
    if (getrlimit(RLIMIT_NOFILE, &flimit) == -1)
    {
