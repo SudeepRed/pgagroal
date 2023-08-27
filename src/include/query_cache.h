@@ -120,7 +120,7 @@ pgagroal_query_cache_invalidate(struct hashTable** Table, void* key);
  * @warning The function only updates the 'data' pointer and does not free any previously allocated memory.
  */
 int
-pgagroal_query_cache_update(struct hashTable** Table, void* key, char* data);
+pgagroal_query_cache_update(struct hashTable** Table, void* key, void* data);
 
 /**
  * Add a new cache entry to the hash table.
@@ -142,7 +142,7 @@ pgagroal_query_cache_update(struct hashTable** Table, void* key, char* data);
  *          The caller should manage memory to avoid leaks.
  */
 int
-pgagroal_query_cache_add(struct hashTable** Table, char* data, void* key);
+pgagroal_query_cache_add(struct hashTable** Table, void* data, void* key);
 
 /**
  * Clear all cache entries from the hash table and free associated memory.

@@ -43,6 +43,10 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+#define QUERY_CACHE_MAX_SIZE 256 * 1024
+
+#define QUERY_CACHE_MAX_ENTRIES 1
+
 int
 pgagroal_query_cache_init(size_t* p_size, void** p_shmem)
 {
@@ -54,7 +58,7 @@ pgagroal_query_cache_init(size_t* p_size, void** p_shmem)
    config = (struct configuration*)shmem;
 
    // first of all, allocate the overall cache structure
-   config->query_cache_max_size = 256 * 1024;
+   config->query_cache_max_size = QUERY_CACHE_MAX_SIZE;
    cache_size = config->query_cache_max_size;
 
    pgagroal_log_info("Query cache initialised");
@@ -94,6 +98,9 @@ pgagroal_query_cache_get(struct hashTable** Table, void* key)
    {
       return NULL;
    }
+   // delete and add the entry again to make it the most recent (LRU caching stategy)
+   HASH_DEL(*Table, s);
+   HASH_ADD_PTR(*Table, key, s);
    return s;
 }
 
@@ -112,20 +119,27 @@ pgagroal_query_cache_invalidate(struct hashTable** Table, void* key)
 }
 
 int
-pgagroal_query_cache_update(struct hashTable** Table, void* key, char* data)
+pgagroal_query_cache_update(struct hashTable** Table, void* key, void* data)
 {
    struct hashTable* s;
    HASH_FIND_PTR(*Table, &key, s);
+   HASH_DEL(*Table, s);
    if (s == NULL)
    {
       return 0;
    }
+   if (sizeof(data) > QUERY_CACHE_MAX_SIZE)
+   {
+      free(s);
+      return 0;
+   }
    s->data = data;
+   HASH_ADD_PTR(*Table, key, s);
    return 1;
 }
 
 int
-pgagroal_query_cache_add(struct hashTable** Table, char* data, void* key)
+pgagroal_query_cache_add(struct hashTable** Table, void* data, void* key)
 {
    struct hashTable* s;
    HASH_FIND_PTR(*Table, &key, s);
@@ -137,6 +151,18 @@ pgagroal_query_cache_add(struct hashTable** Table, char* data, void* key)
    s->key = key;
    s->data = data;
    HASH_ADD_PTR(*Table, key, s);
+
+   // Delete the oldest entry, if the entries exceed the limit
+   if (HASH_COUNT(*Table) > QUERY_CACHE_MAX_ENTRIES)
+   {
+      struct hashTable* current_item, * tmp;
+      HASH_ITER(hh, *Table, current_item, tmp){
+         pgagroal_log_info("Pruning the oldest cache entry");
+         HASH_DELETE(hh, *Table, current_item);
+         free(current_item);
+         break;
+      }
+   }
 
    return 1;
 }
