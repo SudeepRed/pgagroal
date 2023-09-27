@@ -38,6 +38,8 @@
 #include <shmem.h>
 #include <utils.h>
 #include <worker.h>
+#include <uthash.h>
+#include <query_cache.h>
 
 /* system */
 #include <errno.h>
@@ -66,6 +68,7 @@ static bool saw_x = false;
 #define CLIENT_IDLE   1
 #define CLIENT_ACTIVE 2
 #define CLIENT_CHECK  3
+#define SHMEM_MAX_SIZE 256 * 1024
 
 struct client_session
 {
@@ -75,6 +78,7 @@ struct client_session
 
 static void client_active(int);
 static void client_inactive(int);
+struct message* client_server_shmem = NULL;
 
 struct pipeline
 session_pipeline(void)
@@ -96,14 +100,22 @@ static int
 session_initialize(void* shmem, void** pipeline_shmem, size_t* pipeline_shmem_size)
 {
    void* session_shmem = NULL;
+   void* client_server = NULL;
    size_t session_shmem_size;
    struct client_session* client;
    struct configuration* config;
 
    config = (struct configuration*)shmem;
+   client_server_shmem = (struct message*)client_server;
 
    *pipeline_shmem = NULL;
    *pipeline_shmem_size = 0;
+   if (pgagroal_create_shared_memory(SHMEM_MAX_SIZE, config->hugepage, (void**)&client_server_shmem))
+   {
+      pgagroal_log_info("FAILED to create shared memory for client_server_shmem");
+      return 1;
+   }
+   memset(client_server_shmem, 0, SHMEM_MAX_SIZE);
 
    if (config->disconnect_client > 0)
    {
@@ -322,6 +334,13 @@ session_client(struct ev_loop* loop, struct ev_io* watcher, int revents)
                   pgagroal_prometheus_query_count_add();
                   pgagroal_prometheus_query_count_specified_add(wi->slot);
                }
+               if (kind == 'Q')
+               {
+                  pgagroal_log_info("MSG DATA: %s", msg->data + 5);
+                  // copy the message from local variable to shared memory
+                  memcpy(client_server_shmem, msg, sizeof(struct message));
+                  pgagroal_log_info("CLIENT_SERVER_SHARED DATA: %s", client_server_shmem->data + 5);
+               }
 
                /* Calculate the offset to the next message */
                if (offset + length + 1 <= msg->length)
@@ -454,6 +473,18 @@ session_server(struct ev_loop* loop, struct ev_io* watcher, int revents)
    struct message* msg = NULL;
    struct configuration* config = NULL;
 
+   struct query_cache* cache;
+   cache = (struct query_cache*)query_cache_shmem;
+
+   char* query_shmem = client_server_shmem->data + 5;
+   char* query_string = (char*)malloc(strlen(query_shmem) + 1);
+   if (query_string == NULL)
+   {
+      pgagroal_log_fatal("Memory allocation failed");
+      return;
+   }
+   strcpy(query_string, query_shmem);
+
    wi = (struct worker_io*)watcher;
 
    client_active(wi->slot);
@@ -469,6 +500,26 @@ session_server(struct ev_loop* loop, struct ev_io* watcher, int revents)
    if (likely(status == MESSAGE_STATUS_OK))
    {
       pgagroal_prometheus_network_received_add(msg->length);
+      if (msg != NULL && msg->kind == 'T')
+      {
+         struct message* cached_msg = NULL;
+         int resp = pgagroal_create_message(msg->data, msg->length, &cached_msg);
+         if (resp != 1)
+         {
+            return;
+         }
+
+         pgagroal_log_info("CLIENT_MSG DATA %s", query_string);
+         pgagroal_log_info("CACHED_MSG DATA %s", cached_msg->data);
+         pgagroal_log_info("CACHE ENTRIES %d", HASH_COUNT(cache->table));
+         if (!pgagroal_query_cache_add(&(cache->table), cached_msg, query_string))
+         {
+            pgagroal_log_info("UPDATE CACHE; KEY: %s, DATA: %s", query_string, cached_msg);
+            pgagroal_query_cache_update(&(cache->table), query_string, cached_msg);
+         }
+         pgagroal_log_info("ADD to CACHE; KEY: %s, DATA: %s", query_string, cached_msg);
+         pgagroal_log_info("SERVER READ %s", msg->data);
+      }
 
       int offset = 0;
 

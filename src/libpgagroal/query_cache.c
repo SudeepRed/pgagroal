@@ -141,16 +141,23 @@ pgagroal_query_cache_update(struct hashTable** Table, void* key, void* data)
 int
 pgagroal_query_cache_add(struct hashTable** Table, void* data, void* key)
 {
+   pgagroal_log_info("START");
    struct hashTable* s;
    HASH_FIND_PTR(*Table, &key, s);
    if (s != NULL)
    {
+      pgagroal_log_info("NA");
       return 0;
    }
    s = (struct hashTable*)malloc(sizeof(struct hashTable));
+   if (s == NULL)
+   {
+      return 0;
+   }
    s->key = key;
    s->data = data;
    HASH_ADD_PTR(*Table, key, s);
+   pgagroal_log_info("Added  cache entry");
 
    // Delete the oldest entry, if the entries exceed the limit
    if (HASH_COUNT(*Table) > QUERY_CACHE_MAX_ENTRIES)
@@ -186,7 +193,7 @@ pgagroal_query_cache_test(void)
    cache = (struct query_cache*)query_cache_shmem;
 
    char* key = "key";
-   char* nKey = "newKey";
+   void* nKey = "newKey";
    pgagroal_log_info("Add cache entry with key: key and data: data");
    int x = pgagroal_query_cache_add(&(cache->table), "data", key);
    if (x == 0)
